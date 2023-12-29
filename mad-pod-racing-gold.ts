@@ -1,3 +1,13 @@
+// Constants ================================================================
+const BOOST_ANGLE = 15
+const BRAKING_DISTANCE = 2000
+const DRIFT_MIN_SPEED = 100
+const DRIFT_FACTOR = 3
+const DISTANCE_FACTOR = 2
+const CP_RADIUS = 600
+
+// Controls ================================================================
+
 function turn(
   pod: IPod,
   game: IGame
@@ -6,14 +16,41 @@ function turn(
   nextX: number
   nextY: number
 } {
-  let thrust = 100
+  let thrust = calculateThrust(pod, game)
   let nextX: number, nextY: number
 
-  // TODO: Calculate nextX and nextY
-  nextX = game.checkpoints[pod.nextCheckpointId][0]
-  nextY = game.checkpoints[pod.nextCheckpointId][1]
+  if (pod.speed > DRIFT_MIN_SPEED) {
+    nextX = pod.currCheckpointX - DRIFT_FACTOR * pod.speedX
+    nextY = pod.currCheckpointY - DRIFT_FACTOR * pod.speedY
+  } else {
+    nextX = pod.currCheckpointX
+    nextY = pod.currCheckpointY
+  }
 
   return { thrust, nextX, nextY }
+}
+
+function calculateThrust(pod: IPod, game: IGame): number {
+  let thrust = 100
+
+  if (Math.abs(pod.angle) < 90) {
+    thrust *= 1 - Math.abs(pod.angle) / 90
+  }
+
+  if (pod.distanceNextCheckpoint < DISTANCE_FACTOR * CP_RADIUS) {
+    const brakingFactor =
+      pod.distanceNextCheckpoint / (DISTANCE_FACTOR * CP_RADIUS)
+    console.error({ brakingFactor })
+    thrust *= brakingFactor
+  }
+
+  return Math.round(thrust)
+}
+
+// Geometry ================================================================
+
+function distance(x1: number, y1: number, x2: number, y2: number): number {
+  return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
 }
 
 // Pods ================================================================
@@ -23,8 +60,11 @@ interface IPod {
   posY: number
   speedX: number
   speedY: number
+  speed: number
   angle: number
-  nextCheckpointId: number
+  currCheckpointId: number
+  currCheckpointX: number
+  currCheckpointY: number
   distanceNextCheckpoint: number
   currentLap: number
   booseUsed: boolean
@@ -37,8 +77,11 @@ function initializePod(): IPod {
     posY: 0,
     speedX: 0,
     speedY: 0,
+    speed: 0,
     angle: 0,
-    nextCheckpointId: 0,
+    currCheckpointId: 0,
+    currCheckpointX: 0,
+    currCheckpointY: 0,
     distanceNextCheckpoint: 0,
     currentLap: 0,
     booseUsed: false,
@@ -53,13 +96,24 @@ function updatePod(
   speedX: number,
   speedY: number,
   angle: number,
-  nextCheckpointId: number
+  nextCheckpointId: number,
+  nextCheckpointX: number,
+  nextCheckpointY: number
 ): IPod {
   let updatedPod = updatePodPosition(pod, posX, posY)
   updatedPod = updatePodSpeed(updatedPod, speedX, speedY)
   updatedPod = updatePodAngle(updatedPod, angle)
-  updatedPod = updatePodCurrCheckpointId(updatedPod, nextCheckpointId)
-  updatedPod = updatePodDistanceNextCheckpoint(updatedPod, 0) // TODO: Calculate distance
+  updatedPod = updatePodCurrCheckpoint(
+    updatedPod,
+    nextCheckpointId,
+    nextCheckpointX,
+    nextCheckpointY
+  )
+  updatedPod = updatePodDistanceNextCheckpoint(
+    updatedPod,
+    nextCheckpointX,
+    nextCheckpointY
+  )
 
   return updatedPod
 }
@@ -69,21 +123,34 @@ function updatePodPosition(pod: IPod, posX: number, posY: number): IPod {
 }
 
 function updatePodSpeed(pod: IPod, speedX: number, speedY: number): IPod {
-  return { ...pod, speedX, speedY }
+  const speed = Math.sqrt(speedX * speedX + speedY * speedY)
+  return { ...pod, speedX, speedY, speed }
 }
 
 function updatePodAngle(pod: IPod, angle: number): IPod {
   return { ...pod, angle }
 }
 
-function updatePodCurrCheckpointId(pod: IPod, nextCheckpointId: number): IPod {
-  return { ...pod, nextCheckpointId }
+function updatePodCurrCheckpoint(
+  pod: IPod,
+  currCheckpointId: number,
+  currCheckpointX: number,
+  currCheckpointY: number
+): IPod {
+  return { ...pod, currCheckpointId, currCheckpointX, currCheckpointY }
 }
 
 function updatePodDistanceNextCheckpoint(
   pod: IPod,
-  distanceNextCheckpoint: number
+  nextCheckpointX: number,
+  nextCheckpointY: number
 ): IPod {
+  const distanceNextCheckpoint = distance(
+    pod.posX,
+    pod.posY,
+    nextCheckpointX,
+    nextCheckpointY
+  )
   return { ...pod, distanceNextCheckpoint }
 }
 
@@ -230,7 +297,9 @@ function main() {
       myPod1SpeedX,
       myPod1SpeedY,
       myPod1Angle,
-      myPod1NextCheckpointId
+      myPod1NextCheckpointId,
+      game.checkpoints[myPod1NextCheckpointId][0],
+      game.checkpoints[myPod1NextCheckpointId][1]
     )
 
     myPod2 = updatePod(
@@ -240,7 +309,9 @@ function main() {
       myPod2SpeedX,
       myPod2SpeedY,
       myPod2Angle,
-      myPod2NextCheckpointId
+      myPod2NextCheckpointId,
+      game.checkpoints[myPod2NextCheckpointId][0],
+      game.checkpoints[myPod2NextCheckpointId][1]
     )
 
     const { thrust: thrust1, nextX: nextX1, nextY: nextY1 } = turn(myPod1, game)
