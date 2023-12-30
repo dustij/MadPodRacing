@@ -10,6 +10,8 @@ const CP_RADIUS = 600
 
 function nextAction(
   pod: IPod,
+  opponentPod1: IPod,
+  opponentPod2: IPod,
   game: IGame
 ): {
   thrust: number | string
@@ -18,6 +20,20 @@ function nextAction(
 } {
   let thrust = calculateThrust(pod, game)
   let nextX: number, nextY: number
+
+  // Check for potential collision with either opponent pod
+  let collisionDetected = false
+  let collisionPod: IPod | null = null
+
+  if (detectCollision(pod, opponentPod1)) {
+    collisionDetected = true
+    collisionPod = opponentPod1
+  } else if (detectCollision(pod, opponentPod2)) {
+    collisionDetected = true
+    collisionPod = opponentPod2
+  }
+
+  console.error({ collisionDetected, collisionPod })
 
   if (pod.speed > DRIFT_MIN_SPEED) {
     nextX = pod.currCheckpointX - DRIFT_FACTOR * pod.speedX
@@ -67,12 +83,27 @@ function calculateThrust(pod: IPod, game: IGame): number | string {
     if (pod.distanceNextCheckpoint < DISTANCE_FACTOR * CP_RADIUS) {
       const brakingFactor =
         pod.distanceNextCheckpoint / (DISTANCE_FACTOR * CP_RADIUS)
-      console.error({ brakingFactor })
       thrust *= brakingFactor
     }
 
     return Math.round(thrust)
   }
+}
+
+// Collusion management ====================================================
+
+function detectCollision(pod1: IPod, pod2: IPod): boolean {
+  const distance = distanceBetween({
+    x1: pod1.posX,
+    y1: pod1.posY,
+    x2: pod2.posX,
+    y2: pod2.posY,
+  })
+
+  console.error({ distance, myPodId: pod1.id, opponentPodId: pod2.id })
+
+  const collisionRadius = 455
+  return distance < collisionRadius * 2
 }
 
 // Geometry ================================================================
@@ -377,6 +408,8 @@ function main() {
   let game: IGame = initializeGame()
   let myPod1: IPod = initializePod()
   let myPod2: IPod = initializePod()
+  let opponentPod1: IPod = initializePod()
+  let opponentPod2: IPod = initializePod()
   while (true) {
     const {
       myPod1Id,
@@ -435,16 +468,42 @@ function main() {
       game.checkpoints[myPod2NextCheckpointId][1]
     )
 
+    opponentPod1 = updatePod(
+      opponentPod1,
+      opponentPod1Id,
+      opponentPod1PosX,
+      opponentPod1PosY,
+      opponentPod1SpeedX,
+      opponentPod1SpeedY,
+      opponentPod1Angle,
+      opponentPod1NextCheckpointId,
+      game.checkpoints[opponentPod1NextCheckpointId][0],
+      game.checkpoints[opponentPod1NextCheckpointId][1]
+    )
+
+    opponentPod2 = updatePod(
+      opponentPod2,
+      opponentPod2Id,
+      opponentPod2PosX,
+      opponentPod2PosY,
+      opponentPod2SpeedX,
+      opponentPod2SpeedY,
+      opponentPod2Angle,
+      opponentPod2NextCheckpointId,
+      game.checkpoints[opponentPod2NextCheckpointId][0],
+      game.checkpoints[opponentPod2NextCheckpointId][1]
+    )
+
     const {
       thrust: thrust1,
       nextX: nextX1,
       nextY: nextY1,
-    } = nextAction(myPod1, game)
+    } = nextAction(myPod1, opponentPod1, opponentPod2, game)
     const {
       thrust: thrust2,
       nextX: nextX2,
       nextY: nextY2,
-    } = nextAction(myPod2, game)
+    } = nextAction(myPod2, opponentPod1, opponentPod2, game)
 
     console.error({ thrust1, nextX1, nextY1 })
     console.error({
