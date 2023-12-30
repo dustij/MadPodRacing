@@ -8,7 +8,7 @@ const CP_RADIUS = 600
 
 // Controls ================================================================
 
-function turn(
+function nextAction(
   pod: IPod,
   game: IGame
 ): {
@@ -120,6 +120,7 @@ function angleToCheckpoint(
 // Pods ================================================================
 
 interface IPod {
+  id: number
   posX: number
   posY: number
   speedX: number
@@ -138,6 +139,7 @@ interface IPod {
 
 function initializePod(): IPod {
   return {
+    id: 0,
     posX: 0,
     posY: 0,
     speedX: 0,
@@ -157,6 +159,7 @@ function initializePod(): IPod {
 
 function updatePod(
   pod: IPod,
+  id: number,
   posX: number,
   posY: number,
   speedX: number,
@@ -166,7 +169,8 @@ function updatePod(
   nextCheckpointX: number,
   nextCheckpointY: number
 ): IPod {
-  let updatedPod = updatePodPosition(pod, posX, posY)
+  let updatedPod = { ...pod, id }
+  updatedPod = updatePodPosition(updatedPod, posX, posY)
   updatedPod = updatePodSpeed(updatedPod, speedX, speedY)
   updatedPod = updatePodAngle(updatedPod, angle)
   updatedPod = updatePodCurrCheckpoint(
@@ -286,24 +290,28 @@ function initializeGame(): IGame {
 
 function getInput() {
   const podData = {
+    myPod1Id: 0,
     myPod1PosX: 0,
     myPod1PosY: 0,
     myPod1SpeedX: 0,
     myPod1SpeedY: 0,
     myPod1Angle: 0,
     myPod1NextCheckpointId: 0,
+    myPod2Id: 0,
     myPod2PosX: 0,
     myPod2PosY: 0,
     myPod2SpeedX: 0,
     myPod2SpeedY: 0,
     myPod2Angle: 0,
     myPod2NextCheckpointId: 0,
+    opponentPod1Id: 0,
     opponentPod1PosX: 0,
     opponentPod1PosY: 0,
     opponentPod1SpeedX: 0,
     opponentPod1SpeedY: 0,
     opponentPod1Angle: 0,
     opponentPod1NextCheckpointId: 0,
+    opponentPod2Id: 0,
     opponentPod2PosX: 0,
     opponentPod2PosY: 0,
     opponentPod2SpeedX: 0,
@@ -318,6 +326,7 @@ function getInput() {
     const [x, y, vx, vy, angle, nextCheckPointId] = inputs.map(Number)
 
     if (i === 0) {
+      podData.myPod1Id = 1
       podData.myPod1PosX = x
       podData.myPod1PosY = y
       podData.myPod1SpeedX = vx
@@ -325,6 +334,7 @@ function getInput() {
       podData.myPod1Angle = angle
       podData.myPod1NextCheckpointId = nextCheckPointId
     } else {
+      podData.myPod2Id = 2
       podData.myPod2PosX = x
       podData.myPod2PosY = y
       podData.myPod2SpeedX = vx
@@ -340,6 +350,7 @@ function getInput() {
     const [x2, y2, vx2, vy2, angle2, nextCheckPointId2] = inputs.map(Number)
 
     if (i === 0) {
+      podData.opponentPod1Id = 1
       podData.opponentPod1PosX = x2
       podData.opponentPod1PosY = y2
       podData.opponentPod1SpeedX = vx2
@@ -347,6 +358,7 @@ function getInput() {
       podData.opponentPod1Angle = angle2
       podData.opponentPod1NextCheckpointId = nextCheckPointId2
     } else {
+      podData.opponentPod2Id = 2
       podData.opponentPod2PosX = x2
       podData.opponentPod2PosY = y2
       podData.opponentPod2SpeedX = vx2
@@ -367,24 +379,28 @@ function main() {
   let myPod2: IPod = initializePod()
   while (true) {
     const {
+      myPod1Id,
       myPod1PosX,
       myPod1PosY,
       myPod1SpeedX,
       myPod1SpeedY,
       myPod1Angle,
       myPod1NextCheckpointId,
+      myPod2Id,
       myPod2PosX,
       myPod2PosY,
       myPod2SpeedX,
       myPod2SpeedY,
       myPod2Angle,
       myPod2NextCheckpointId,
+      opponentPod1Id,
       opponentPod1PosX,
       opponentPod1PosY,
       opponentPod1SpeedX,
       opponentPod1SpeedY,
       opponentPod1Angle,
       opponentPod1NextCheckpointId,
+      opponentPod2Id,
       opponentPod2PosX,
       opponentPod2PosY,
       opponentPod2SpeedX,
@@ -395,6 +411,7 @@ function main() {
 
     myPod1 = updatePod(
       myPod1,
+      myPod1Id,
       myPod1PosX,
       myPod1PosY,
       myPod1SpeedX,
@@ -407,6 +424,7 @@ function main() {
 
     myPod2 = updatePod(
       myPod2,
+      myPod2Id,
       myPod2PosX,
       myPod2PosY,
       myPod2SpeedX,
@@ -417,8 +435,16 @@ function main() {
       game.checkpoints[myPod2NextCheckpointId][1]
     )
 
-    const { thrust: thrust1, nextX: nextX1, nextY: nextY1 } = turn(myPod1, game)
-    const { thrust: thrust2, nextX: nextX2, nextY: nextY2 } = turn(myPod2, game)
+    const {
+      thrust: thrust1,
+      nextX: nextX1,
+      nextY: nextY1,
+    } = nextAction(myPod1, game)
+    const {
+      thrust: thrust2,
+      nextX: nextX2,
+      nextY: nextY2,
+    } = nextAction(myPod2, game)
 
     console.error({ thrust1, nextX1, nextY1 })
     console.error({
