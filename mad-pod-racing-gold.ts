@@ -5,6 +5,8 @@ const DRIFT_MIN_SPEED = 100
 const DRIFT_FACTOR = 4
 const DISTANCE_FACTOR = 2
 const CP_RADIUS = 600
+const COLLISION_SPEED_THRESHOLD = 300
+const DECREASE_THRUST_VALUE = 10
 
 // Controls ================================================================
 
@@ -18,19 +20,23 @@ function nextAction(
   nextX: number
   nextY: number
 } {
-  let thrust = calculateThrust(pod, game)
+  pod.thrust = calculateThrust(pod, game)
   let nextX: number, nextY: number
 
   // Check for potential collision with either opponent pod
   let collisionDetected = false
   let collisionPod: IPod | null = null
 
-  if (detectCollision(pod, opponentPod1)) {
-    collisionDetected = true
-    collisionPod = opponentPod1
-  } else if (detectCollision(pod, opponentPod2)) {
-    collisionDetected = true
-    collisionPod = opponentPod2
+  // Collision handling
+  if (
+    detectCollision(pod, opponentPod1) ||
+    detectCollision(pod, opponentPod2)
+  ) {
+    // Adjust thrust and direction after collision
+    // Example: Decelerate if moving too fast or redirect towards the next checkpoint
+    const desiredThrustChange = calculateThrustChangeForCollision(pod, game)
+    pod.thrust = adjustThrustForCollision(pod, desiredThrustChange)
+    ;[nextX, nextY] = chooseDirectionPostCollision(pod, game)
   }
 
   console.error({ collisionDetected, collisionPod })
@@ -58,11 +64,12 @@ function nextAction(
     nextY = game.checkpoints[nextCheckpointId][1]
   }
 
-  thrust = typeof thrust === "number" ? Math.round(thrust) : thrust
+  pod.thrust =
+    typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust
   nextX = Math.round(nextX)
   nextY = Math.round(nextY)
 
-  return { thrust, nextX, nextY }
+  return { thrust: pod.thrust, nextX, nextY }
 }
 
 function calculateThrust(pod: IPod, game: IGame): number | string {
@@ -105,6 +112,86 @@ function detectCollision(pod1: IPod, pod2: IPod): boolean {
   const collisionRadius = 455
   return distance < collisionRadius * 2
 }
+
+function calculateThrustChangeForCollision(pod: IPod, game: IGame): number {
+  // Implement logic to calculate how much the thrust needs to change
+  // Simplified example: if moving too fast, reduce thrust
+  if (pod.speed > COLLISION_SPEED_THRESHOLD) {
+    return -DECREASE_THRUST_VALUE // Example: reduce thrust by some value
+  }
+  return 0
+}
+
+function adjustThrustForCollision(
+  pod: IPod,
+  thrustChange: number
+): number | string {
+  if (!pod.thrust) {
+    return 0
+  }
+
+  if (typeof pod.thrust === "string") {
+    return pod.thrust
+  }
+
+  let newThrust = Math.round(pod.thrust + thrustChange)
+  return Math.max(0, Math.min(100, newThrust)) // Ensure thrust stays within 0 to 100
+}
+
+function chooseDirectionPostCollision(
+  pod: IPod,
+  game: IGame
+): [number, number] {
+  // Implement logic to choose a new direction post-collision
+  // Example: Aim towards the next checkpoint
+  const nextCheckpoint = game.checkpoints[pod.currCheckpointId]
+  return [nextCheckpoint[0], nextCheckpoint[1]]
+}
+
+// function handleCollision(pod1: IPod, pod2: IPod) {
+//   // Calculate the velocity change
+//   const velocityChange1 = Math.sqrt(
+//     Math.pow(pod2.speedX - pod1.speedX, 2) +
+//       Math.pow(pod2.speedY - pod1.speedY, 2)
+//   )
+//   const velocityChange2 = Math.sqrt(
+//     Math.pow(pod1.speedX - pod2.speedX, 2) +
+//       Math.pow(pod1.speedY - pod2.speedY, 2)
+//   )
+
+//   // Ensure minimum impulse
+//   if (velocityChange1 < 120) {
+//     adjustVelocityForImpulse(pod1, pod2, 120 - velocityChange1)
+//   }
+//   if (velocityChange2 < 120) {
+//     adjustVelocityForImpulse(pod2, pod1, 120 - velocityChange2)
+//   }
+
+//   // Swap velocities
+//   const tempSpeedX = pod1.speedX
+//   const tempSpeedY = pod1.speedY
+
+//   pod1.speedX = pod2.speedX
+//   pod1.speedY = pod2.speedY
+
+//   pod2.speedX = tempSpeedX
+//   pod2.speedY = tempSpeedY
+// }
+
+// function adjustVelocityForImpulse(
+//   pod: IPod,
+//   otherPod: IPod,
+//   requiredIncrease: number
+// ) {
+//   // Adjust the velocity of 'pod' to increase the impulse
+//   // This is a simplified approach; more complex physics may be needed for accurate behavior
+//   pod.speedX +=
+//     (requiredIncrease * (pod.speedX - otherPod.speedX)) /
+//     Math.abs(pod.speedX - otherPod.speedX)
+//   pod.speedY +=
+//     (requiredIncrease * (pod.speedY - otherPod.speedY)) /
+//     Math.abs(pod.speedY - otherPod.speedY)
+// }
 
 // Geometry ================================================================
 
@@ -166,6 +253,7 @@ interface IPod {
   currentLap: number
   booseUsed: boolean
   shieldUsed: boolean
+  thrust?: number | string
 }
 
 function initializePod(): IPod {
