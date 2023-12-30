@@ -2,7 +2,7 @@
 const BOOST_ANGLE = 15
 const BRAKING_DISTANCE = 2000
 const DRIFT_MIN_SPEED = 100
-const DRIFT_FACTOR = 3
+const DRIFT_FACTOR = 4
 const DISTANCE_FACTOR = 2
 const CP_RADIUS = 600
 
@@ -12,7 +12,7 @@ function turn(
   pod: IPod,
   game: IGame
 ): {
-  thrust: number
+  thrust: number | string
   nextX: number
   nextY: number
 } {
@@ -27,30 +27,94 @@ function turn(
     nextY = pod.currCheckpointY
   }
 
+  // Find distance between [nextX, nextY] and [checkpointX, checkpointY]
+  const _distanceBetween = distanceBetween({
+    x1: nextX,
+    y1: nextY,
+    x2: pod.currCheckpointX,
+    y2: pod.currCheckpointY,
+  })
+
+  // If pod has passed this point, aim at next checkpoint
+  if (pod.distanceNextCheckpoint < _distanceBetween) {
+    const nextCheckpointId = (pod.currCheckpointId + 1) % game.checkpointCount
+    nextX = game.checkpoints[nextCheckpointId][0]
+    nextY = game.checkpoints[nextCheckpointId][1]
+  }
+
+  thrust = typeof thrust === "number" ? Math.round(thrust) : thrust
+  nextX = Math.round(nextX)
+  nextY = Math.round(nextY)
+
   return { thrust, nextX, nextY }
 }
 
-function calculateThrust(pod: IPod, game: IGame): number {
+function calculateThrust(pod: IPod, game: IGame): number | string {
   let thrust = 100
 
-  if (Math.abs(pod.angle) < 90) {
-    thrust *= 1 - Math.abs(pod.angle) / 90
-  }
+  if (
+    Math.abs(pod.angleNextCheckpoint) < BOOST_ANGLE &&
+    pod.currCheckpointId === game.optimalBoostCheckpointId &&
+    !pod.booseUsed
+  ) {
+    pod.booseUsed = true
+    return "BOOST"
+  } else {
+    if (Math.abs(pod.angleNextCheckpoint) < 90) {
+      thrust *= 1 - Math.abs(pod.angleNextCheckpoint) / 90
+    }
 
-  if (pod.distanceNextCheckpoint < DISTANCE_FACTOR * CP_RADIUS) {
-    const brakingFactor =
-      pod.distanceNextCheckpoint / (DISTANCE_FACTOR * CP_RADIUS)
-    console.error({ brakingFactor })
-    thrust *= brakingFactor
-  }
+    if (pod.distanceNextCheckpoint < DISTANCE_FACTOR * CP_RADIUS) {
+      const brakingFactor =
+        pod.distanceNextCheckpoint / (DISTANCE_FACTOR * CP_RADIUS)
+      console.error({ brakingFactor })
+      thrust *= brakingFactor
+    }
 
-  return Math.round(thrust)
+    return Math.round(thrust)
+  }
 }
 
 // Geometry ================================================================
 
-function distance(x1: number, y1: number, x2: number, y2: number): number {
+function distanceBetween({
+  x1,
+  y1,
+  x2,
+  y2,
+}: {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+}): number {
   return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2))
+}
+
+function angleToCheckpoint(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  podDirection: number
+): number {
+  // Calculate the angle between the pod and the checkpoint (where [x2, y2] is the checkpoint)
+  const deltaX = x2 - x1
+  const deltaY = y2 - y1
+  let angleToCheckpoint = (Math.atan2(deltaY, deltaX) * 180) / Math.PI
+
+  // Adjust the angle based on the pod's current direction
+  let adjustedAngle = angleToCheckpoint - podDirection
+
+  // Normalize the angle to be within the range of -180 to 180 degrees
+  while (adjustedAngle > 180) {
+    adjustedAngle -= 360
+  }
+  while (adjustedAngle < -180) {
+    adjustedAngle += 360
+  }
+
+  return adjustedAngle
 }
 
 // Pods ================================================================
@@ -66,6 +130,7 @@ interface IPod {
   currCheckpointX: number
   currCheckpointY: number
   distanceNextCheckpoint: number
+  angleNextCheckpoint: number
   currentLap: number
   booseUsed: boolean
   shieldUsed: boolean
@@ -83,6 +148,7 @@ function initializePod(): IPod {
     currCheckpointX: 0,
     currCheckpointY: 0,
     distanceNextCheckpoint: 0,
+    angleNextCheckpoint: 0,
     currentLap: 0,
     booseUsed: false,
     shieldUsed: false,
@@ -110,6 +176,11 @@ function updatePod(
     nextCheckpointY
   )
   updatedPod = updatePodDistanceNextCheckpoint(
+    updatedPod,
+    nextCheckpointX,
+    nextCheckpointY
+  )
+  updatedPod = updatePodAngleNextCheckpoint(
     updatedPod,
     nextCheckpointX,
     nextCheckpointY
@@ -145,22 +216,39 @@ function updatePodDistanceNextCheckpoint(
   nextCheckpointX: number,
   nextCheckpointY: number
 ): IPod {
-  const distanceNextCheckpoint = distance(
+  const distanceNextCheckpoint = distanceBetween({
+    x1: pod.posX,
+    y1: pod.posY,
+    x2: nextCheckpointX,
+    y2: nextCheckpointY,
+  })
+  return { ...pod, distanceNextCheckpoint }
+}
+
+function updatePodAngleNextCheckpoint(
+  pod: IPod,
+  nextCheckpointX: number,
+  nextCheckpointY: number
+): IPod {
+  const angleNextCheckpoint = angleToCheckpoint(
     pod.posX,
     pod.posY,
     nextCheckpointX,
-    nextCheckpointY
+    nextCheckpointY,
+    pod.angle
   )
-  return { ...pod, distanceNextCheckpoint }
+  return { ...pod, angleNextCheckpoint }
 }
 
 // Game ================================================================
 
 interface IGame {
   laps: number
+  checkpointCount: number
   checkpoints: {
     [id: number]: [number, number]
   }
+  optimalBoostCheckpointId: number
 }
 
 function initializeGame(): IGame {
@@ -170,7 +258,7 @@ function initializeGame(): IGame {
   // @ts-ignore
   const checkpointCount: number = parseInt(readline())
 
-  const checkpoints = {}
+  const checkpoints: { [id: number]: [number, number] } = {}
   for (let i = 0; i < checkpointCount; i++) {
     // @ts-ignore
     var inputs: string[] = readline().split(" ")
@@ -178,7 +266,22 @@ function initializeGame(): IGame {
     const checkpointY: number = parseInt(inputs[1])
     checkpoints[i] = [checkpointX, checkpointY]
   }
-  return { laps, checkpoints }
+
+  // Find optimal boost checkpoint
+  const distances = Object.keys(checkpoints).map((key) => {
+    const i = parseInt(key)
+    return distanceBetween({
+      x1: checkpoints[i][0],
+      y1: checkpoints[i][1],
+      x2: checkpoints[(i + 1) % checkpointCount][0],
+      y2: checkpoints[(i + 1) % checkpointCount][1],
+    })
+  })
+
+  const maxDistanceIndex = distances.indexOf(Math.max(...distances))
+  const optimalBoostCheckpointId = (maxDistanceIndex + 1) % checkpointCount
+
+  return { laps, checkpointCount, checkpoints, optimalBoostCheckpointId }
 }
 
 function getInput() {
@@ -318,7 +421,15 @@ function main() {
     const { thrust: thrust2, nextX: nextX2, nextY: nextY2 } = turn(myPod2, game)
 
     console.error({ thrust1, nextX1, nextY1 })
+    console.error({
+      myPod1CpX: game.checkpoints[myPod1NextCheckpointId][0],
+      MyPod1CpY: game.checkpoints[myPod1NextCheckpointId][1],
+    })
     console.error({ thrust2, nextX2, nextY2 })
+    console.error({
+      myPod2CpX: game.checkpoints[myPod2NextCheckpointId][0],
+      MyPod2CpY: game.checkpoints[myPod2NextCheckpointId][1],
+    })
     console.error({ myPod1, myPod2, game })
 
     console.log(`${nextX1} ${nextY1} ${thrust1}`)
