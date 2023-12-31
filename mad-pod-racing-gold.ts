@@ -46,6 +46,10 @@ const COLLISION_DECRIMENT_THRESHOLD = 10
 // Used to gradually reduce the pod's thrust over time or in specific conditions.
 const THRUST_DECREASE_PER_TICK = 10
 
+// Speed at which to stop correcting.
+// Used to stop correcting the pod's position after a collision.
+const CORRECTION_SPEED_THRESHOLD = 100
+
 // ============================================================================
 // Geometry
 // ============================================================================
@@ -140,6 +144,8 @@ interface IPod {
   isOpponent: boolean
   thrust?: number | string
   isCorrecting?: boolean
+  directionX?: number
+  directionY?: number
 }
 
 /**
@@ -167,6 +173,8 @@ function initializePod(): IPod {
     shieldUsed: false,
     isOpponent: false,
     isCorrecting: false,
+    directionX: 0,
+    directionY: 0,
   }
 }
 
@@ -456,46 +464,20 @@ function adjustPositionAfterCollision(
   otherPod: IPod
 ): [number, number] {
   console.error("ADJUSTING POSITION AFTER COLLISION")
-  // Calculate the direction of the impulse. This needs to be derived from your game's collision mechanics.
-  // For example, based on the relative position and velocity of the colliding pods.
-  const impulseDirection = calculateImpulseDirection(myPod, otherPod)
+  myPod.isCorrecting = true
 
-  // Determine the opposite direction to counter the impulse
-  const oppositeDirection = { x: -impulseDirection.x, y: -impulseDirection.y }
+  // Determine the opposite direction
+  const oppositeDirection = { x: -myPod.prevSpeedX, y: -myPod.prevSpeedY }
 
   // Apply maximum thrust in the opposite direction to slow down
   myPod.thrust = 100
 
   // Calculate the next position based on the opposite direction
   // TODO: You may need to convert the direction to a vector and apply it to the current position.
-  let nextX = myPod.posX + oppositeDirection.x * myPod.thrust
-  let nextY = myPod.posY + oppositeDirection.y * myPod.thrust
+  let nextX = myPod.posX + oppositeDirection.x * 10
+  let nextY = myPod.posY + oppositeDirection.y * 10
 
   return [nextX, nextY]
-}
-
-/**
- * Calculates the direction of the impulse exerted on thisPod during a collision.
- * @param {IPod} myPod - The pod experiencing the collision.
- * @param {IPod} otherPod - The other pod involved in the collision.
- * @returns {object} The direction vector of the impulse.
- */
-function calculateImpulseDirection(
-  myPod: IPod,
-  otherPod: IPod
-): { x: number; y: number } {
-  // Calculate the vector from thisPod to otherPod
-  const deltaX = otherPod.posX - myPod.posX
-  const deltaY = otherPod.posY - myPod.posY
-
-  // Calculate the distance between the pods
-  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
-
-  // Normalize the vector to get the direction
-  const directionX = deltaX / distance
-  const directionY = deltaY / distance
-
-  return { x: directionX, y: directionY }
 }
 
 // ============================================================================
@@ -520,9 +502,22 @@ function nextAction(
 ): { thrust: number | string; nextX: number; nextY: number } {
   // Initialize basic thrust and next coordinates
   pod.thrust = calculateThrust(pod, game)
-  // TODO: need to check if my pod is in correcting mode before setting nextX and nextY
-  let nextX: number = pod.nextCheckpointX
-  let nextY: number = pod.nextCheckpointY
+
+  if (pod.isCorrecting) {
+    console.error("CORRECTING POSITION", "speed:", pod.speed)
+    if (pod.speed >= CORRECTION_SPEED_THRESHOLD) {
+      pod.isCorrecting = false
+    }
+    // return {
+    //   thrust:
+    //     typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
+    //   nextX: Math.round(pod.directionX ?? pod.nextCheckpointX),
+    //   nextY: Math.round(pod.directionY ?? pod.nextCheckpointY),
+    // }
+  }
+
+  pod.directionX = pod.nextCheckpointX
+  pod.directionY = pod.nextCheckpointY
 
   // Detect potential collisions
   const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
@@ -566,7 +561,10 @@ function nextAction(
 
         if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
           // Adjust position to correct for collision
-          ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+          ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+            pod,
+            myOtherPod
+          )
         }
       } else {
         // collisionWithOpponent2
@@ -600,7 +598,10 @@ function nextAction(
 
         if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
           // Adjust position to correct for collision
-          ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+          ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+            pod,
+            myOtherPod
+          )
         }
       }
     } else {
@@ -609,42 +610,49 @@ function nextAction(
 
       if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
         // Adjust position to correct for collision
-        ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+        ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+          pod,
+          myOtherPod
+        )
       }
     }
   } else {
     // Normal action calculation
     if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
       // Drift by aiming for a point based on the pod's current speed
-      nextX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
-      nextY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
+      pod.directionX,
+        (pod.directionY =
+          pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX)
+      pod.directionX,
+        (pod.directionY =
+          pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY)
     } else {
       // Aim directly for the next checkpoint
-      nextX = pod.nextCheckpointX
-      nextY = pod.nextCheckpointY
+      pod.directionX, (pod.directionY = pod.nextCheckpointX)
+      pod.directionX, (pod.directionY = pod.nextCheckpointY)
     }
   }
 
   // Check if the pod is passing the current checkpoint and aim for the next one
   const distanceToCheckpoint = distanceBetween({
-    x1: nextX,
-    y1: nextY,
+    x1: pod.directionX,
+    y1: pod.directionY,
     x2: pod.nextCheckpointX,
     y2: pod.nextCheckpointY,
   })
 
   if (pod.distanceNextCheckpoint < distanceToCheckpoint) {
     const nextCheckpointId = (pod.nextCheckpointId + 1) % game.checkpointCount
-    nextX = game.checkpoints[nextCheckpointId][0]
-    nextY = game.checkpoints[nextCheckpointId][1]
+    pod.directionX = game.checkpoints[nextCheckpointId][0]
+    pod.directionY = game.checkpoints[nextCheckpointId][1]
   }
 
   // Finalize and round the thrust and position coordinates
   return {
     thrust:
       typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
-    nextX: Math.round(nextX),
-    nextY: Math.round(nextY),
+    nextX: Math.round(pod.directionX),
+    nextY: Math.round(pod.directionY),
   }
 }
 
