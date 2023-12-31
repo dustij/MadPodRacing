@@ -2,6 +2,10 @@
 // Constants
 // ============================================================================
 
+// Friction factor for the game.
+// Used to gradually reduce the pod's speed over time.
+const FRICTION_FACTOR = 0.85
+
 // Angle threshold for using boost in degrees.
 // Represents the maximum angle at which the pod can effectively use its boost.
 const MAX_BOOST_ANGLE_DEGREES = 15
@@ -32,7 +36,11 @@ const COLLISION_DETECTION_SPEED_THRESHOLD = 300
 
 // Collision radius for a pod in game units.
 // Defines the distance at which two pods are considered to be colliding.
-const COLLISION_RADIUS_UNITS = 455
+const COLLISION_RADIUS_UNITS = 400
+
+// Collision benefit threshold in game units.
+// Defines the score at which a collision is considered beneficial.
+const COLLISION_DECRIMENT_THRESHOLD = 10
 
 // Thrust decrease value per game tick.
 // Used to gradually reduce the pod's thrust over time or in specific conditions.
@@ -116,6 +124,8 @@ interface IPod {
   posX: number
   posY: number
   speedX: number
+  prevSpeedX: number
+  prevSpeedY: number
   speedY: number
   speed: number
   angle: number
@@ -127,7 +137,9 @@ interface IPod {
   currentLap: number
   boostUsed: boolean
   shieldUsed: boolean
+  isOpponent: boolean
   thrust?: number | string
+  isCorrecting?: boolean
 }
 
 /**
@@ -141,6 +153,8 @@ function initializePod(): IPod {
     posY: 0,
     speedX: 0,
     speedY: 0,
+    prevSpeedX: 0,
+    prevSpeedY: 0,
     speed: 0,
     angle: 0,
     nextCheckpointId: 0,
@@ -151,6 +165,8 @@ function initializePod(): IPod {
     currentLap: 0,
     boostUsed: false,
     shieldUsed: false,
+    isOpponent: false,
+    isCorrecting: false,
   }
 }
 
@@ -170,7 +186,8 @@ function updatePod(
   angle: number,
   nextCheckpointId: number,
   nextCheckpointX: number,
-  nextCheckpointY: number
+  nextCheckpointY: number,
+  isOpponent: boolean = false
 ): IPod {
   return {
     ...pod,
@@ -197,6 +214,7 @@ function updatePod(
       nextCheckpointY,
       angle
     ),
+    isOpponent,
   }
 }
 
@@ -360,29 +378,124 @@ function updatePodData(podData: any, index: number, isMyPod: boolean) {
 
 /**
  * Detects if there is a collision between two pods.
- * @param {IPod} pod1 - The first pod.
- * @param {IPod} pod2 - The second pod.
+ * @param {IPod} myPod - The first pod.
+ * @param {IPod} otherPod - The second pod.
  * @returns {boolean} True if the pods are colliding, false otherwise.
  */
-function detectCollision(pod1: IPod, pod2: IPod): boolean {
+function detectCollision(myPod: IPod, otherPod: IPod): boolean {
+  // TODO: Change detection based on drastic velocity changes (e.g. speedX changes from 373 to -798 in one tick)
+  console.error({
+    speedX: myPod.speedX,
+    prevSpeedX: myPod.prevSpeedX,
+    speedY: myPod.speedY,
+    prevSpeedY: myPod.prevSpeedY,
+  })
+  const pod1NextPosX = myPod.posX + myPod.speedX * FRICTION_FACTOR
+  const pod1NextPosY = myPod.posY + myPod.speedY * FRICTION_FACTOR
+  const pod2NextPosX = otherPod.posX + otherPod.speedX * FRICTION_FACTOR
+  const pod2NextPosY = otherPod.posY + otherPod.speedY * FRICTION_FACTOR
+
   // Calculate the distance between the two pods
   const distance = distanceBetween({
-    x1: pod1.posX,
-    y1: pod1.posY,
-    x2: pod2.posX,
-    y2: pod2.posY,
-  })
-
-  // Log the distance for debugging purposes
-  console.error({
-    collision: distance < COLLISION_RADIUS_UNITS * 2,
-    distance,
-    myPodId: pod1.id,
-    opponentPodId: pod2.id,
+    x1: pod1NextPosX,
+    y1: pod1NextPosY,
+    x2: pod2NextPosX,
+    y2: pod2NextPosY,
   })
 
   // Check if the distance is less than twice the collision radius
-  return distance < COLLISION_RADIUS_UNITS * 2
+  return distance <= COLLISION_RADIUS_UNITS * 2
+}
+
+/**
+ * Detects if a collision between two pods is beneficial.
+ * @param {IPod} myPod - The first pod.
+ * @param {IPod} otherPod - The second pod.
+ * @param {IGame} game - The current game state.
+ * @returns {number} The collision benefit score.
+ */
+function collisionBenefitScore(
+  myPod: IPod,
+  otherPod: IPod,
+  game: IGame
+): number {
+  const baseDistance = distanceBetween({
+    x1: myPod.posX,
+    y1: myPod.posY,
+    x2: game.checkpoints[myPod.nextCheckpointId][0],
+    y2: game.checkpoints[myPod.nextCheckpointId][1],
+  })
+
+  const heuristicNextPosX =
+    myPod.posX +
+    myPod.speedX * FRICTION_FACTOR +
+    otherPod.speedX * FRICTION_FACTOR
+  const heuristicNextPosY =
+    myPod.posY +
+    myPod.speedY * FRICTION_FACTOR +
+    otherPod.speedY * FRICTION_FACTOR
+
+  const heuristicDistance = distanceBetween({
+    x1: game.checkpoints[myPod.nextCheckpointId][0],
+    y1: game.checkpoints[myPod.nextCheckpointId][1],
+    x2: heuristicNextPosX,
+    y2: heuristicNextPosY,
+  })
+
+  return baseDistance - heuristicDistance
+}
+
+/**
+ * Adjusts the pod's position after a collision by steering in the opposite direction of the impact.
+ * @param {IPod} myPod - The pod experiencing the collision.
+ * @param {IPod} otherPod - The other pod involved in the collision.
+ * @returns {[number, number]} The next position coordinates (nextX, nextY).
+ */
+function adjustPositionAfterCollision(
+  myPod: IPod,
+  otherPod: IPod
+): [number, number] {
+  console.error("ADJUSTING POSITION AFTER COLLISION")
+  // Calculate the direction of the impulse. This needs to be derived from your game's collision mechanics.
+  // For example, based on the relative position and velocity of the colliding pods.
+  const impulseDirection = calculateImpulseDirection(myPod, otherPod)
+
+  // Determine the opposite direction to counter the impulse
+  const oppositeDirection = { x: -impulseDirection.x, y: -impulseDirection.y }
+
+  // Apply maximum thrust in the opposite direction to slow down
+  myPod.thrust = 100
+
+  // Calculate the next position based on the opposite direction
+  // TODO: You may need to convert the direction to a vector and apply it to the current position.
+  let nextX = myPod.posX + oppositeDirection.x * myPod.thrust
+  let nextY = myPod.posY + oppositeDirection.y * myPod.thrust
+
+  return [nextX, nextY]
+}
+
+/**
+ * Calculates the direction of the impulse exerted on thisPod during a collision.
+ * @param {IPod} myPod - The pod experiencing the collision.
+ * @param {IPod} otherPod - The other pod involved in the collision.
+ * @returns {object} The direction vector of the impulse.
+ */
+function calculateImpulseDirection(
+  myPod: IPod,
+  otherPod: IPod
+): { x: number; y: number } {
+  // Calculate the vector from thisPod to otherPod
+  const deltaX = otherPod.posX - myPod.posX
+  const deltaY = otherPod.posY - myPod.posY
+
+  // Calculate the distance between the pods
+  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+  // Normalize the vector to get the direction
+  const directionX = deltaX / distance
+  const directionY = deltaY / distance
+
+  return { x: directionX, y: directionY }
 }
 
 // ============================================================================
@@ -392,6 +505,7 @@ function detectCollision(pod1: IPod, pod2: IPod): boolean {
 /**
  * Determines the next action for the pod based on its current state and the game state.
  * @param {IPod} pod - The current pod.
+ * @param {IPod} myOtherPod - The player's other pod.
  * @param {IPod} opponentPod1 - The first opponent pod.
  * @param {IPod} opponentPod2 - The second opponent pod.
  * @param {IGame} game - The current game state.
@@ -399,28 +513,119 @@ function detectCollision(pod1: IPod, pod2: IPod): boolean {
  */
 function nextAction(
   pod: IPod,
+  myOtherPod: IPod,
   opponentPod1: IPod,
   opponentPod2: IPod,
   game: IGame
 ): { thrust: number | string; nextX: number; nextY: number } {
-  // Calculate the thrust for the current pod based on its position and game state
+  // Initialize basic thrust and next coordinates
   pod.thrust = calculateThrust(pod, game)
-  let nextX: number, nextY: number
+  // TODO: need to check if my pod is in correcting mode before setting nextX and nextY
+  let nextX: number = pod.nextCheckpointX
+  let nextY: number = pod.nextCheckpointY
 
-  // TODO: Implement collision logic with opponent pods.
+  // Detect potential collisions
+  const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
+  const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
+  const collisionWithOpponent = collisionWithOpponent1 || collisionWithOpponent2
+  const collisionWithAlly = detectCollision(pod, myOtherPod)
 
-  // If the pod's speed is above the threshold for effective drifting,
-  // calculate the next position with drift effect applied
-  if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
-    nextX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
-    nextY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
+  // Collision handling logic
+  if (collisionWithOpponent || collisionWithAlly) {
+    console.error({ collisionWithOpponent, collisionWithAlly })
+    // TODO: You can replace this with more sophisticated logic based on your game's mechanics, such as: offensive vs. defensive, if impulse is large enough, etc.
+    if (collisionWithOpponent) {
+      if (collisionWithOpponent1) {
+        const scoreReportedByOpponent1 = collisionBenefitScore(
+          opponentPod1,
+          pod,
+          game
+        )
+
+        const scoreReportedByMyPod = collisionBenefitScore(
+          pod,
+          opponentPod1,
+          game
+        )
+
+        console.error({ myPod: pod.id, oppPod: opponentPod1.id })
+        console.error({ scoreReportedByOpponent1, scoreReportedByMyPod })
+
+        // Beneficial shield activation
+        if (!pod.shieldUsed) {
+          if (scoreReportedByOpponent1 < -COLLISION_DECRIMENT_THRESHOLD) {
+            pod.shieldUsed = true
+            pod.thrust = "SHIELD"
+            console.error("SHIELD ACTIVATED")
+          } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
+            pod.shieldUsed = true
+            pod.thrust = "SHIELD"
+            console.error("SHIELD ACTIVATED")
+          }
+        }
+
+        if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+          // Adjust position to correct for collision
+          ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+        }
+      } else {
+        // collisionWithOpponent2
+        const scoreReportedByOpponent2 = collisionBenefitScore(
+          opponentPod2,
+          pod,
+          game
+        )
+
+        const scoreReportedByMyPod = collisionBenefitScore(
+          pod,
+          opponentPod2,
+          game
+        )
+
+        console.error({ myPod: pod.id, oppPod: opponentPod2.id })
+        console.error({ scoreReportedByOpponent2, scoreReportedByMyPod })
+
+        // Beneficial shield activation
+        if (!pod.shieldUsed) {
+          if (scoreReportedByOpponent2 < -COLLISION_DECRIMENT_THRESHOLD) {
+            pod.shieldUsed = true
+            pod.thrust = "SHIELD"
+            console.error("SHIELD ACTIVATED")
+          } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
+            pod.shieldUsed = true
+            pod.thrust = "SHIELD"
+            console.error("SHIELD ACTIVATED")
+          }
+        }
+
+        if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+          // Adjust position to correct for collision
+          ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+        }
+      }
+    } else {
+      // Collision with ally
+      const scoreReportedByMyPod = collisionBenefitScore(pod, myOtherPod, game)
+
+      if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+        // Adjust position to correct for collision
+        ;[nextX, nextY] = adjustPositionAfterCollision(pod, myOtherPod)
+      }
+    }
   } else {
-    // If the pod is moving slowly, head directly towards the current checkpoint
-    nextX = pod.nextCheckpointX
-    nextY = pod.nextCheckpointY
+    // Normal action calculation
+    if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
+      // Drift by aiming for a point based on the pod's current speed
+      nextX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
+      nextY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
+    } else {
+      // Aim directly for the next checkpoint
+      nextX = pod.nextCheckpointX
+      nextY = pod.nextCheckpointY
+    }
   }
 
-  // Calculate the distance to the next checkpoint from the proposed next position
+  // Check if the pod is passing the current checkpoint and aim for the next one
   const distanceToCheckpoint = distanceBetween({
     x1: nextX,
     y1: nextY,
@@ -428,16 +633,13 @@ function nextAction(
     y2: pod.nextCheckpointY,
   })
 
-  // If the pod has already passed this checkpoint, aim for the next one
   if (pod.distanceNextCheckpoint < distanceToCheckpoint) {
-    // Calculate the ID of the next checkpoint
     const nextCheckpointId = (pod.nextCheckpointId + 1) % game.checkpointCount
-    // Update the next coordinates to the next checkpoint's position
     nextX = game.checkpoints[nextCheckpointId][0]
     nextY = game.checkpoints[nextCheckpointId][1]
   }
 
-  // Finalize and round the thrust and next position coordinates
+  // Finalize and round the thrust and position coordinates
   return {
     thrust:
       typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
@@ -512,6 +714,16 @@ function main() {
     // Read and update the game state based on the current input.
     const podData = getInput()
 
+    // Update previous speed values for each pod.
+    myPod1.prevSpeedX = myPod1.speedX
+    myPod1.prevSpeedY = myPod1.speedY
+    myPod2.prevSpeedX = myPod2.speedX
+    myPod2.prevSpeedY = myPod2.speedY
+    opponentPod1.prevSpeedX = opponentPod1.speedX
+    opponentPod1.prevSpeedY = opponentPod1.speedY
+    opponentPod2.prevSpeedX = opponentPod2.speedX
+    opponentPod2.prevSpeedY = opponentPod2.speedY
+
     // Update the state of each pod with the latest data.
     myPod1 = updatePod(
       myPod1,
@@ -549,7 +761,8 @@ function main() {
       podData.opponentPod1Angle,
       podData.opponentPod1NextCheckpointId,
       game.checkpoints[podData.opponentPod1NextCheckpointId][0],
-      game.checkpoints[podData.opponentPod1NextCheckpointId][1]
+      game.checkpoints[podData.opponentPod1NextCheckpointId][1],
+      true
     )
 
     opponentPod2 = updatePod(
@@ -562,30 +775,37 @@ function main() {
       podData.opponentPod2Angle,
       podData.opponentPod2NextCheckpointId,
       game.checkpoints[podData.opponentPod2NextCheckpointId][0],
-      game.checkpoints[podData.opponentPod2NextCheckpointId][1]
+      game.checkpoints[podData.opponentPod2NextCheckpointId][1],
+      true
     )
 
     // Determine the next action for each of the player's pods.
-    const myPod1Action = nextAction(myPod1, opponentPod1, opponentPod2, game)
-    const myPod2Action = nextAction(myPod2, opponentPod1, opponentPod2, game)
+    const myPod1Action = nextAction(
+      myPod1,
+      myPod2,
+      opponentPod1,
+      opponentPod2,
+      game
+    )
+    const myPod2Action = nextAction(
+      myPod2,
+      myPod1,
+      opponentPod1,
+      opponentPod2,
+      game
+    )
 
-    // Log debug information for each pod.
+    // Log debugging.
     console.error({
-      myPod: myPod1.id,
-      thrust: myPod1Action.thrust,
-      nextX: myPod1Action.nextX,
-      nextY: myPod1Action.nextY,
+      pod: myPod1.id,
+      boostUsed: myPod1.boostUsed,
+      shieldUsed: myPod1.shieldUsed,
     })
-
     console.error({
-      myPod: myPod2.id,
-      thrust: myPod2Action.thrust,
-      nextX: myPod2Action.nextX,
-      nextY: myPod2Action.nextY,
+      pod: myPod2.id,
+      boostUsed: myPod2.boostUsed,
+      shieldUsed: myPod2.shieldUsed,
     })
-
-    // Log the current state of the game and pods for debugging.
-    console.error({ myPod1, myPod2, game })
 
     // Output the next action for each of the player's pods.
     console.log(
