@@ -285,6 +285,9 @@ function getInput() {
 
   for (let i = 0; i < 2; i++) {
     updatePodData(podData, i, true) // Update myPods
+  }
+
+  for (let i = 0; i < 2; i++) {
     updatePodData(podData, i, false) // Update opponentPods
   }
 
@@ -568,14 +571,17 @@ function main() {
 
     // Log debug information for each pod.
     console.error({
-      thrust1: myPod1Action.thrust,
-      nextX1: myPod1Action.nextX,
-      nextY1: myPod1Action.nextY,
+      myPod: myPod1.id,
+      thrust: myPod1Action.thrust,
+      nextX: myPod1Action.nextX,
+      nextY: myPod1Action.nextY,
     })
+
     console.error({
-      thrust2: myPod2Action.thrust,
-      nextX2: myPod2Action.nextX,
-      nextY2: myPod2Action.nextY,
+      myPod: myPod2.id,
+      thrust: myPod2Action.thrust,
+      nextX: myPod2Action.nextX,
+      nextY: myPod2Action.nextY,
     })
 
     // Log the current state of the game and pods for debugging.
