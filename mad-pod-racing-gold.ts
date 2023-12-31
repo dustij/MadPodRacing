@@ -503,135 +503,138 @@ function nextAction(
   // Initialize basic thrust and next coordinates
   pod.thrust = calculateThrust(pod, game)
 
+  console.error({ pod: pod.id, thrust: pod.thrust, speed: pod.speed })
+
   if (pod.isCorrecting) {
-    console.error("CORRECTING POSITION", "speed:", pod.speed)
+    console.error("CORRECTING POSITION")
     if (pod.speed >= CORRECTION_SPEED_THRESHOLD) {
       pod.isCorrecting = false
     }
-    // return {
-    //   thrust:
-    //     typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
-    //   nextX: Math.round(pod.directionX ?? pod.nextCheckpointX),
-    //   nextY: Math.round(pod.directionY ?? pod.nextCheckpointY),
-    // }
   }
 
-  pod.directionX = pod.nextCheckpointX
-  pod.directionY = pod.nextCheckpointY
+  // if (pod.isCorrecting) {
+  //   console.error("CORRECTING POSITION", "speed:", pod.speed)
+  //   if (pod.speed >= CORRECTION_SPEED_THRESHOLD) {
+  //     pod.isCorrecting = false
+  //   }
+  //   // return {
+  //   //   thrust:
+  //   //     typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
+  //   //   nextX: Math.round(pod.directionX ?? pod.nextCheckpointX),
+  //   //   nextY: Math.round(pod.directionY ?? pod.nextCheckpointY),
+  //   // }
+  // }
 
-  // Detect potential collisions
-  const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
-  const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
-  const collisionWithOpponent = collisionWithOpponent1 || collisionWithOpponent2
-  const collisionWithAlly = detectCollision(pod, myOtherPod)
+  // pod.directionX = pod.nextCheckpointX
+  // pod.directionY = pod.nextCheckpointY
 
-  // Collision handling logic
-  if (collisionWithOpponent || collisionWithAlly) {
-    console.error({ collisionWithOpponent, collisionWithAlly })
-    // TODO: You can replace this with more sophisticated logic based on your game's mechanics, such as: offensive vs. defensive, if impulse is large enough, etc.
-    if (collisionWithOpponent) {
-      if (collisionWithOpponent1) {
-        const scoreReportedByOpponent1 = collisionBenefitScore(
-          opponentPod1,
-          pod,
-          game
-        )
+  // // Detect potential collisions
+  // const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
+  // const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
+  // const collisionWithOpponent = collisionWithOpponent1 || collisionWithOpponent2
+  // const collisionWithAlly = detectCollision(pod, myOtherPod)
 
-        const scoreReportedByMyPod = collisionBenefitScore(
-          pod,
-          opponentPod1,
-          game
-        )
+  // // Collision handling logic
+  // if (collisionWithOpponent || collisionWithAlly) {
+  //   console.error({ collisionWithOpponent, collisionWithAlly })
+  //   // TODO: You can replace this with more sophisticated logic based on your game's mechanics, such as: offensive vs. defensive, if impulse is large enough, etc.
+  //   if (collisionWithOpponent) {
+  //     if (collisionWithOpponent1) {
+  //       const scoreReportedByOpponent1 = collisionBenefitScore(
+  //         opponentPod1,
+  //         pod,
+  //         game
+  //       )
 
-        console.error({ myPod: pod.id, oppPod: opponentPod1.id })
-        console.error({ scoreReportedByOpponent1, scoreReportedByMyPod })
+  //       const scoreReportedByMyPod = collisionBenefitScore(
+  //         pod,
+  //         opponentPod1,
+  //         game
+  //       )
 
-        // Beneficial shield activation
-        if (!pod.shieldUsed) {
-          if (scoreReportedByOpponent1 < -COLLISION_DECRIMENT_THRESHOLD) {
-            pod.shieldUsed = true
-            pod.thrust = "SHIELD"
-            console.error("SHIELD ACTIVATED")
-          } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
-            pod.shieldUsed = true
-            pod.thrust = "SHIELD"
-            console.error("SHIELD ACTIVATED")
-          }
-        }
+  //       console.error({ myPod: pod.id, oppPod: opponentPod1.id })
+  //       console.error({ scoreReportedByOpponent1, scoreReportedByMyPod })
 
-        if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
-          // Adjust position to correct for collision
-          ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
-            pod,
-            myOtherPod
-          )
-        }
-      } else {
-        // collisionWithOpponent2
-        const scoreReportedByOpponent2 = collisionBenefitScore(
-          opponentPod2,
-          pod,
-          game
-        )
+  //       // Beneficial shield activation
+  //       if (!pod.shieldUsed) {
+  //         if (scoreReportedByOpponent1 < -COLLISION_DECRIMENT_THRESHOLD) {
+  //           pod.shieldUsed = true
+  //           pod.thrust = "SHIELD"
+  //           console.error("SHIELD ACTIVATED")
+  //         } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
+  //           pod.shieldUsed = true
+  //           pod.thrust = "SHIELD"
+  //           console.error("SHIELD ACTIVATED")
+  //         }
+  //       }
 
-        const scoreReportedByMyPod = collisionBenefitScore(
-          pod,
-          opponentPod2,
-          game
-        )
+  //       if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+  //         // Adjust position to correct for collision
+  //         ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+  //           pod,
+  //           myOtherPod
+  //         )
+  //       }
+  //     } else {
+  //       // collisionWithOpponent2
+  //       const scoreReportedByOpponent2 = collisionBenefitScore(
+  //         opponentPod2,
+  //         pod,
+  //         game
+  //       )
 
-        console.error({ myPod: pod.id, oppPod: opponentPod2.id })
-        console.error({ scoreReportedByOpponent2, scoreReportedByMyPod })
+  //       const scoreReportedByMyPod = collisionBenefitScore(
+  //         pod,
+  //         opponentPod2,
+  //         game
+  //       )
 
-        // Beneficial shield activation
-        if (!pod.shieldUsed) {
-          if (scoreReportedByOpponent2 < -COLLISION_DECRIMENT_THRESHOLD) {
-            pod.shieldUsed = true
-            pod.thrust = "SHIELD"
-            console.error("SHIELD ACTIVATED")
-          } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
-            pod.shieldUsed = true
-            pod.thrust = "SHIELD"
-            console.error("SHIELD ACTIVATED")
-          }
-        }
+  //       console.error({ myPod: pod.id, oppPod: opponentPod2.id })
+  //       console.error({ scoreReportedByOpponent2, scoreReportedByMyPod })
 
-        if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
-          // Adjust position to correct for collision
-          ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
-            pod,
-            myOtherPod
-          )
-        }
-      }
-    } else {
-      // Collision with ally
-      const scoreReportedByMyPod = collisionBenefitScore(pod, myOtherPod, game)
+  //       // Beneficial shield activation
+  //       if (!pod.shieldUsed) {
+  //         if (scoreReportedByOpponent2 < -COLLISION_DECRIMENT_THRESHOLD) {
+  //           pod.shieldUsed = true
+  //           pod.thrust = "SHIELD"
+  //           console.error("SHIELD ACTIVATED")
+  //         } else if (scoreReportedByMyPod < -COLLISION_DECRIMENT_THRESHOLD) {
+  //           pod.shieldUsed = true
+  //           pod.thrust = "SHIELD"
+  //           console.error("SHIELD ACTIVATED")
+  //         }
+  //       }
 
-      if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
-        // Adjust position to correct for collision
-        ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
-          pod,
-          myOtherPod
-        )
-      }
-    }
+  //       if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+  //         // Adjust position to correct for collision
+  //         ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+  //           pod,
+  //           myOtherPod
+  //         )
+  //       }
+  //     }
+  //   } else {
+  //     // Collision with ally
+  //     const scoreReportedByMyPod = collisionBenefitScore(pod, myOtherPod, game)
+
+  //     if (scoreReportedByMyPod > COLLISION_DECRIMENT_THRESHOLD) {
+  //       // Adjust position to correct for collision
+  //       ;[pod.directionX, pod.directionY] = adjustPositionAfterCollision(
+  //         pod,
+  //         myOtherPod
+  //       )
+  //     }
+  //   }
+  // } else {
+  // Normal action calculation
+  if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
+    pod.directionX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
+    pod.directionY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
   } else {
-    // Normal action calculation
-    if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
-      // Drift by aiming for a point based on the pod's current speed
-      pod.directionX,
-        (pod.directionY =
-          pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX)
-      pod.directionX,
-        (pod.directionY =
-          pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY)
-    } else {
-      // Aim directly for the next checkpoint
-      pod.directionX, (pod.directionY = pod.nextCheckpointX)
-      pod.directionX, (pod.directionY = pod.nextCheckpointY)
-    }
+    pod.directionX = pod.nextCheckpointX
+    pod.directionY = pod.nextCheckpointY
   }
+  // }
 
   // Check if the pod is passing the current checkpoint and aim for the next one
   const distanceToCheckpoint = distanceBetween({
