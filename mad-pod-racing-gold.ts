@@ -144,8 +144,8 @@ interface IPod {
   isOpponent: boolean
   thrust?: number | string
   isCorrecting?: boolean
-  directionX?: number
-  directionY?: number
+  targetX?: number
+  targetY?: number
 }
 
 /**
@@ -173,8 +173,8 @@ function initializePod(): IPod {
     shieldUsed: false,
     isOpponent: false,
     isCorrecting: false,
-    directionX: 0,
-    directionY: 0,
+    targetX: 0,
+    targetY: 0,
   }
 }
 
@@ -204,7 +204,7 @@ function updatePod(
     posY,
     speedX,
     speedY,
-    speed: Math.sqrt(speedX * speedX + speedY * speedY),
+    speed: Math.round(Math.sqrt(speedX * speedX + speedY * speedY)),
     angle,
     nextCheckpointId,
     nextCheckpointX,
@@ -384,6 +384,119 @@ function updatePodData(podData: any, index: number, isMyPod: boolean) {
 // Collision
 // ============================================================================
 
+type Vector = {
+  x: number
+  y: number
+}
+
+// /**
+//  * Calculates the future position of a pod after one turn.
+//  * @param {IPod} pod - The pod for which to calculate the future position.
+//  * @returns {object} The future position { x: number, y: number } of the pod.
+//  */
+// function calculateFuturePosition(pod: IPod): { x: number; y: number } {
+//   // Calculate future position based on current speed and position
+//   const futurePosX = pod.posX + pod.speedX
+//   const futurePosY = pod.posY + pod.speedY
+
+//   return { x: futurePosX, y: futurePosY }
+// }
+
+// Other class and type definitions remain the same
+
+function getCollisionAngle(pod1: IPod, pod2: IPod): number {
+  const dx = pod2.posX - pod1.posX
+  const dy = pod2.posY - pod1.posY
+  return Math.atan2(dy, dx)
+}
+
+function rotateVector(vector: Vector, angle: number): Vector {
+  return {
+    x: vector.x * Math.cos(angle) - vector.y * Math.sin(angle),
+    y: vector.x * Math.sin(angle) + vector.y * Math.cos(angle),
+  }
+}
+
+function updateVelocityAfterCollisionWithAngle(pod1: IPod, pod2: IPod): void {
+  const angle = getCollisionAngle(pod1, pod2)
+
+  // Rotate velocities to line of impact
+  const pod1Velocity = { x: pod1.speedX, y: pod1.speedY }
+  const pod2Velocity = { x: pod2.speedX, y: pod2.speedY }
+  const u1 = rotateVector(pod1Velocity, -angle)
+  const u2 = rotateVector(pod2Velocity, -angle)
+
+  // Apply 1D elastic collision equations (assuming equal masses)
+  const v1x = u2.x
+  const v2x = u1.x
+
+  // Rotate velocities back
+  const v1 = rotateVector({ x: v1x, y: u1.y }, angle)
+  const v2 = rotateVector({ x: v2x, y: u2.y }, angle)
+
+  // Update velocities
+  pod1.speedX = v1.x
+  pod1.speedY = v1.y
+  pod2.speedX = v2.x
+  pod2.speedY = v2.y
+}
+
+function ellasticCollision(myPod: IPod, otherPod: IPod) {
+  // Decompose velocities
+  const u1x = myPod.speedX
+  const u1y = myPod.speedY
+  const u2x = otherPod.speedX
+  const u2y = otherPod.speedY
+
+  // Conservation of momentum (simplified for equal masses)
+  const v1x = u2x
+  const v1y = u2y
+  const v2x = u1x
+  const v2y = u1y
+
+  // Update velocities
+  updateVelocityAfterCollisionWithAngle(myPod, otherPod)
+
+  // Calculate future positions
+  const myPodFuturePosition = {
+    x: myPod.posX + myPod.speedX,
+    y: myPod.posY + myPod.speedY,
+  }
+  const otherPodFuturePosition = {
+    x: otherPod.posX + otherPod.speedX,
+    y: otherPod.posY + otherPod.speedY,
+  }
+
+  return [myPodFuturePosition, otherPodFuturePosition]
+}
+
+// may be usefel?
+// Calculate the relative velocity of the pods
+// const relativeVelocityX = myPod.speedX - otherPod.speedX
+// const relativeVelocityY = myPod.speedY - otherPod.speedY
+
+// // Calculate the distance between the two pods
+// const distance = distanceBetween({
+//   x1: myPod.posX,
+//   y1: myPod.posY,
+//   x2: otherPod.posX,
+//   y2: otherPod.posY,
+// })
+
+// // Calculate the normal vector between the two pods
+// const normalVectorX = (otherPod.posX - myPod.posX) / distance
+// const normalVectorY = (otherPod.posY - myPod.posY) / distance
+
+// // Calculate the impulse
+// const impulse =
+//   (2 *
+//     (relativeVelocityX * normalVectorX + relativeVelocityY * normalVectorY)) /
+//   (myPod.mass + otherPod.mass)
+
+// // Calculate the new speed of the pods
+// const newSpeedX = myPod.speedX + impulse * otherPod.mass * normalVectorX
+// const newSpeedY = myPod.speedY + impulse * otherPod.mass * normalVectorY
+
 /**
  * Detects if there is a collision between two pods.
  * @param {IPod} myPod - The first pod.
@@ -391,24 +504,17 @@ function updatePodData(podData: any, index: number, isMyPod: boolean) {
  * @returns {boolean} True if the pods are colliding, false otherwise.
  */
 function detectCollision(myPod: IPod, otherPod: IPod): boolean {
-  // TODO: Change detection based on drastic velocity changes (e.g. speedX changes from 373 to -798 in one tick)
-  console.error({
-    speedX: myPod.speedX,
-    prevSpeedX: myPod.prevSpeedX,
-    speedY: myPod.speedY,
-    prevSpeedY: myPod.prevSpeedY,
-  })
-  const pod1NextPosX = myPod.posX + myPod.speedX * FRICTION_FACTOR
-  const pod1NextPosY = myPod.posY + myPod.speedY * FRICTION_FACTOR
-  const pod2NextPosX = otherPod.posX + otherPod.speedX * FRICTION_FACTOR
-  const pod2NextPosY = otherPod.posY + otherPod.speedY * FRICTION_FACTOR
+  const myPodNextPosX = myPod.posX + myPod.speedX * FRICTION_FACTOR
+  const myPodNextPosY = myPod.posY + myPod.speedY * FRICTION_FACTOR
+  const otherPodNextPosX = otherPod.posX + otherPod.speedX * FRICTION_FACTOR
+  const otherPodNextPosY = otherPod.posY + otherPod.speedY * FRICTION_FACTOR
 
   // Calculate the distance between the two pods
   const distance = distanceBetween({
-    x1: pod1NextPosX,
-    y1: pod1NextPosY,
-    x2: pod2NextPosX,
-    y2: pod2NextPosY,
+    x1: myPodNextPosX,
+    y1: myPodNextPosY,
+    x2: otherPodNextPosX,
+    y2: otherPodNextPosY,
   })
 
   // Check if the distance is less than twice the collision radius
@@ -499,7 +605,7 @@ function nextAction(
   opponentPod1: IPod,
   opponentPod2: IPod,
   game: IGame
-): { thrust: number | string; nextX: number; nextY: number } {
+): { thrust: number | string; targetX: number; targetY: number } {
   // Initialize basic thrust and next coordinates
   pod.thrust = calculateThrust(pod, game)
 
@@ -528,14 +634,34 @@ function nextAction(
   // pod.directionX = pod.nextCheckpointX
   // pod.directionY = pod.nextCheckpointY
 
-  // // Detect potential collisions
-  // const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
-  // const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
-  // const collisionWithOpponent = collisionWithOpponent1 || collisionWithOpponent2
-  // const collisionWithAlly = detectCollision(pod, myOtherPod)
+  // Detect potential collisions
+  const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
+  if (collisionWithOpponent1) {
+    const opponent1BenefitScore = collisionBenefitScore(opponentPod1, pod, game)
+    console.error(`COLLISION - Opponent 1`)
+    console.error({ ellasticCollision: ellasticCollision(pod, opponentPod1) })
+    pod.thrust = "SHIELD"
+    pod.shieldUsed = true
+  }
+
+  const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
+  if (collisionWithOpponent2) {
+    const opponent2BenefitScore = collisionBenefitScore(opponentPod2, pod, game)
+    console.error(`COLLISION`)
+    console.error({ ellasticCollision: ellasticCollision(pod, opponentPod2) })
+    pod.thrust = "SHIELD"
+    pod.shieldUsed = true
+  }
+
+  const collisionWithAlly = detectCollision(pod, myOtherPod)
+  if (collisionWithAlly) {
+    console.error("COLLISION DETECTED - Ally")
+  }
 
   // // Collision handling logic
   // if (collisionWithOpponent || collisionWithAlly) {
+  //   console.error("COLLISION DETECTED")
+
   //   console.error({ collisionWithOpponent, collisionWithAlly })
   //   // TODO: You can replace this with more sophisticated logic based on your game's mechanics, such as: offensive vs. defensive, if impulse is large enough, etc.
   //   if (collisionWithOpponent) {
@@ -626,36 +752,37 @@ function nextAction(
   //     }
   //   }
   // } else {
-  // Normal action calculation
+
+  // Target correction logic
   if (pod.speed > MINIMUM_DRIFT_SPEED_UNITS) {
-    pod.directionX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
-    pod.directionY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
+    pod.targetX = pod.nextCheckpointX - DRIFT_INTENSITY_FACTOR * pod.speedX
+    pod.targetY = pod.nextCheckpointY - DRIFT_INTENSITY_FACTOR * pod.speedY
   } else {
-    pod.directionX = pod.nextCheckpointX
-    pod.directionY = pod.nextCheckpointY
+    pod.targetX = pod.nextCheckpointX
+    pod.targetY = pod.nextCheckpointY
   }
   // }
 
   // Check if the pod is passing the current checkpoint and aim for the next one
-  const distanceToCheckpoint = distanceBetween({
-    x1: pod.directionX,
-    y1: pod.directionY,
+  const distanceTargetToCheckpoint = distanceBetween({
+    x1: pod.targetX,
+    y1: pod.targetY,
     x2: pod.nextCheckpointX,
     y2: pod.nextCheckpointY,
   })
 
-  if (pod.distanceNextCheckpoint < distanceToCheckpoint) {
+  if (pod.distanceNextCheckpoint < distanceTargetToCheckpoint) {
     const nextCheckpointId = (pod.nextCheckpointId + 1) % game.checkpointCount
-    pod.directionX = game.checkpoints[nextCheckpointId][0]
-    pod.directionY = game.checkpoints[nextCheckpointId][1]
+    pod.targetX = game.checkpoints[nextCheckpointId][0]
+    pod.targetY = game.checkpoints[nextCheckpointId][1]
   }
 
   // Finalize and round the thrust and position coordinates
   return {
     thrust:
       typeof pod.thrust === "number" ? Math.round(pod.thrust) : pod.thrust,
-    nextX: Math.round(pod.directionX),
-    nextY: Math.round(pod.directionY),
+    targetX: Math.round(pod.targetX),
+    targetY: Math.round(pod.targetY),
   }
 }
 
@@ -790,6 +917,10 @@ function main() {
       true
     )
 
+    // Log debugging.
+    console.error({ pod: myPod1.id, vx: myPod1.speedX, vy: myPod1.speedY })
+    console.error({ pod: myPod2.id, vx: myPod2.speedX, vy: myPod2.speedY })
+
     // Determine the next action for each of the player's pods.
     const myPod1Action = nextAction(
       myPod1,
@@ -820,10 +951,10 @@ function main() {
 
     // Output the next action for each of the player's pods.
     console.log(
-      `${myPod1Action.nextX} ${myPod1Action.nextY} ${myPod1Action.thrust}`
+      `${myPod1Action.targetX} ${myPod1Action.targetY} ${myPod1Action.thrust}`
     )
     console.log(
-      `${myPod2Action.nextX} ${myPod2Action.nextY} ${myPod2Action.thrust}`
+      `${myPod2Action.targetX} ${myPod2Action.targetY} ${myPod2Action.thrust}`
     )
   }
 }
