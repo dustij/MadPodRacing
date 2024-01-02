@@ -30,13 +30,17 @@ const TARGET_DISTANCE_FACTOR = 2
 // Defines the area within which the pod needs to be to successfully pass a checkpoint.
 const CHECKPOINT_RADIUS_UNITS = 600
 
-// Speed threshold for collision detection in game speed units.
-// Speeds above this threshold trigger collision logic.
-const COLLISION_DETECTION_SPEED_THRESHOLD = 300
+// Speed threshold for collision shield in game speed units.
+// Difference in speeds above this threshold trigger sheild.
+const COLLISION_SPEED_THRESHOLD = 80
+
+// Angle threshold for collision shield in degrees.
+// Difference in angles above this threshold trigger sheild.
+const COLLISION_ANGLE_THRESHOLD = 75
 
 // Collision radius for a pod in game units.
 // Defines the distance at which two pods are considered to be colliding.
-const COLLISION_RADIUS_UNITS = 400
+const COLLISION_RADIUS_UNITS = 447
 
 // Collision benefit threshold in game units.
 // Defines the score at which a collision is considered beneficial.
@@ -391,10 +395,15 @@ function updatePodData(podData: any, index: number, isMyPod: boolean) {
  * @returns {boolean} True if the pods are colliding, false otherwise.
  */
 function detectCollision(myPod: IPod, otherPod: IPod): boolean {
-  const myPodNextPosX = myPod.posX + myPod.speedX * FRICTION_FACTOR
-  const myPodNextPosY = myPod.posY + myPod.speedY * FRICTION_FACTOR
-  const otherPodNextPosX = otherPod.posX + otherPod.speedX * FRICTION_FACTOR
-  const otherPodNextPosY = otherPod.posY + otherPod.speedY * FRICTION_FACTOR
+  const nextPosX = myPod.posX + myPod.speedX * FRICTION_FACTOR
+  const nextPosY = myPod.posY + myPod.speedY * FRICTION_FACTOR
+  const otherNextPosX = otherPod.posX + otherPod.speedX * FRICTION_FACTOR
+  const otherNextPosY = otherPod.posY + otherPod.speedY * FRICTION_FACTOR
+
+  const myPodNextPosX = nextPosX + myPod.speedX * FRICTION_FACTOR
+  const myPodNextPosY = nextPosY + myPod.speedY * FRICTION_FACTOR
+  const otherPodNextPosX = otherNextPosX + otherPod.speedX * FRICTION_FACTOR
+  const otherPodNextPosY = otherNextPosY + otherPod.speedY * FRICTION_FACTOR
 
   // Calculate the distance between the two pods
   const distance = distanceBetween({
@@ -442,16 +451,44 @@ function nextAction(
   // Detect potential collisions
   const collisionWithOpponent1 = detectCollision(pod, opponentPod1)
   if (collisionWithOpponent1) {
-    console.error(`COLLISION - Opponent 1`)
-    pod.thrust = "SHIELD"
-    pod.shieldUsed = true
+    // Shield if the difference in target angle is large enough, signifying a more direct collision rather than a glancing blow
+    const collisionAngle = Math.abs(pod.angle - opponentPod1.angle)
+
+    // Shield if the difference in speed is large enough, so shield has a greater effect
+    const collisionSpeed = Math.abs(pod.speed - opponentPod1.speed)
+
+    console.error(
+      `COLLISION - ${pod.id} with Opp. 1 - Angle: ${collisionAngle} - Speed: ${collisionSpeed}`
+    )
+
+    if (
+      collisionAngle > COLLISION_ANGLE_THRESHOLD &&
+      collisionSpeed > COLLISION_SPEED_THRESHOLD
+    ) {
+      pod.thrust = "SHIELD"
+      pod.shieldUsed = true
+    }
   }
 
   const collisionWithOpponent2 = detectCollision(pod, opponentPod2)
   if (collisionWithOpponent2) {
-    console.error(`COLLISION`)
-    pod.thrust = "SHIELD"
-    pod.shieldUsed = true
+    // Shield if the difference in target angle is large enough, signifying a more direct collision rather than a glancing blow
+    const collisionAngle = Math.abs(pod.angle - opponentPod2.angle)
+
+    // Shield if the difference in speed is large enough, so shield has a greater effect
+    const collisionSpeed = Math.abs(pod.speed - opponentPod2.speed)
+
+    console.error(
+      `COLLISION - ${pod.id} with Opp. 2 - Angle: ${collisionAngle} - Speed: ${collisionSpeed}`
+    )
+
+    if (
+      collisionAngle > COLLISION_ANGLE_THRESHOLD &&
+      collisionSpeed > COLLISION_SPEED_THRESHOLD
+    ) {
+      pod.thrust = "SHIELD"
+      pod.shieldUsed = true
+    }
   }
 
   const collisionWithAlly = detectCollision(pod, myOtherPod)
